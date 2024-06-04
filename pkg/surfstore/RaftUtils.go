@@ -141,6 +141,7 @@ func (s *RaftSurfstore) sendPersistentHeartbeats(ctx context.Context, reqId int6
 		if reqId >= 0 && reqId < requestLen {
 			s.raftStateMutex.Lock()
 			*s.pendingRequests[reqId] <- PendingRequest{success: true, err: nil}
+			// Remove the request from the pending requests
 			s.pendingRequests = append(s.pendingRequests[:reqId], s.pendingRequests[reqId+1:]...)
 			s.raftStateMutex.Unlock()
 		}

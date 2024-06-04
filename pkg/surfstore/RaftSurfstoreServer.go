@@ -54,11 +54,16 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 	// Ensure that the request gets replicated on majority of the servers.
 	// Commit the entries and then apply to the state machine
 
+	// not leader -> return ErrNotLeader
+	// crashed -> return ErrServerCrashed
 	if err := s.checkStatus(); err != nil {
 		return nil, err
 	}
 
+	// PendingRequest: err, success
 	pendingReq := make(chan PendingRequest)
+
+	// add to the log
 	s.raftStateMutex.Lock()
 	entry := UpdateOperation{
 		Term:         s.term,
@@ -66,12 +71,14 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 	}
 	s.log = append(s.log, &entry)
 
+	// add the request to the pending requests
 	s.pendingRequests = append(s.pendingRequests, &pendingReq)
 
-	//TODO: Think whether it should be last or first request
+	//TODO: Think whether it should be last or first request -> last
 	reqId := len(s.pendingRequests) - 1
 	s.raftStateMutex.Unlock()
 
+	// send the request to all the followers
 	go s.sendPersistentHeartbeats(ctx, int64(reqId))
 
 	response := <-pendingReq
