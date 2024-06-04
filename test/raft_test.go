@@ -101,9 +101,12 @@ func TestRaftFollowersGetUpdates(t *testing.T) {
 	goldenLog := make([]*surfstore.UpdateOperation, 0)
 	goldenLog = append(goldenLog, &surfstore.UpdateOperation{
 		Term:         1,
+		FileMetaData: nil,
+	})
+	goldenLog = append(goldenLog, &surfstore.UpdateOperation{
+		Term:         1,
 		FileMetaData: filemeta1,
 	})
-
 	var leader bool
 	term := int64(1)
 
