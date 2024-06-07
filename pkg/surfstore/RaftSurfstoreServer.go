@@ -35,19 +35,78 @@ type RaftSurfstore struct {
 
 func (s *RaftSurfstore) GetFileInfoMap(ctx context.Context, empty *emptypb.Empty) (*FileInfoMap, error) {
 	// Ensure that the majority of servers are up
+	if err := s.checkStatus(); err != nil {
+		return nil, err
+	}
+	log.Println("[GetFileInfoMap] begin sending persistent heartbeats")
+	// send persistent heartbeats
+	pendingReq := make(chan PendingRequest)
+	s.raftStateMutex.Lock()
+	s.pendingRequests = append(s.pendingRequests, &pendingReq)
+	reqId := len(s.pendingRequests) - 1
+	s.raftStateMutex.Unlock()
+
+	go s.sendPersistentHeartbeats(ctx, int64(reqId))
+	log.Println("[GetFileInfoMap] sent persistent heartbeats")
+	pendingRequest := <-pendingReq
+	if pendingRequest.err != nil {
+		return nil, pendingRequest.err
+	}
+	if !pendingRequest.success {
+		return s.GetFileInfoMap(ctx, empty)
+	}
 	return s.metaStore.GetFileInfoMap(ctx, empty)
 }
 
 func (s *RaftSurfstore) GetBlockStoreMap(ctx context.Context, hashes *BlockHashes) (*BlockStoreMap, error) {
 	// Ensure that the majority of servers are up
-	return s.metaStore.GetBlockStoreMap(ctx, hashes)
+	if err := s.checkStatus(); err != nil {
+		return nil, err
+	}
+	log.Println("[GetBlockStoreMap] begin sending persistent heartbeats")
+	// send persistent heartbeats
+	pendingReq := make(chan PendingRequest)
+	s.raftStateMutex.Lock()
+	s.pendingRequests = append(s.pendingRequests, &pendingReq)
+	reqId := len(s.pendingRequests) - 1
+	s.raftStateMutex.Unlock()
 
+	go s.sendPersistentHeartbeats(ctx, int64(reqId))
+	log.Println("[GetBlockStoreMap] sent persistent heartbeats")
+	pendingRequest := <-pendingReq
+	if pendingRequest.err != nil {
+		return nil, pendingRequest.err
+	}
+	if !pendingRequest.success {
+		return s.GetBlockStoreMap(ctx, hashes)
+	}
+	return s.metaStore.GetBlockStoreMap(ctx, hashes)
 }
 
 func (s *RaftSurfstore) GetBlockStoreAddrs(ctx context.Context, empty *emptypb.Empty) (*BlockStoreAddrs, error) {
 	// Ensure that the majority of servers are up
-	return s.metaStore.GetBlockStoreAddrs(ctx, empty)
+	if err := s.checkStatus(); err != nil {
+		return nil, err
+	}
+	log.Println("[GetBlockStoreAddrs] begin sending persistent heartbeats")
+	// send persistent heartbeats
+	pendingReq := make(chan PendingRequest)
+	s.raftStateMutex.Lock()
+	s.pendingRequests = append(s.pendingRequests, &pendingReq)
+	reqId := len(s.pendingRequests) - 1
+	s.raftStateMutex.Unlock()
 
+	go s.sendPersistentHeartbeats(ctx, int64(reqId))
+	pendingRequest := <-pendingReq
+
+	log.Println("[GetBlockStoreAddrs] received response from persistent heartbeats")
+	if pendingRequest.err != nil {
+		return nil, pendingRequest.err
+	}
+	if !pendingRequest.success {
+		return s.GetBlockStoreAddrs(ctx, empty)
+	}
+	return s.metaStore.GetBlockStoreAddrs(ctx, empty)
 }
 
 func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) (*Version, error) {
@@ -85,6 +144,10 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 	if response.err != nil {
 		return nil, response.err
 	}
+	if !response.success {
+		// retry
+		return s.UpdateFile(ctx, filemeta)
+	}
 
 	//TODO:
 	// Ensure that leader commits first and then applies to the state machine
@@ -92,6 +155,9 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 	s.commitIndex += 1
 	s.raftStateMutex.Unlock()
 
+	if entry.FileMetaData == nil {
+		return &Version{Version: -1}, nil
+	}
 	return s.metaStore.UpdateFile(ctx, entry.FileMetaData)
 }
 
@@ -138,6 +204,10 @@ func (s *RaftSurfstore) AppendEntries(ctx context.Context, input *AppendEntryInp
 	s.commitIndex = input.LeaderCommit
 	for s.lastApplied < s.commitIndex {
 		entry := s.log[s.lastApplied+1]
+		if entry.FileMetaData == nil {
+			s.lastApplied += 1
+			continue
+		}
 		_, err := s.metaStore.UpdateFile(ctx, entry.FileMetaData)
 		if err != nil {
 			s.raftStateMutex.Unlock()
@@ -169,7 +239,8 @@ func (s *RaftSurfstore) SetLeader(ctx context.Context, _ *emptypb.Empty) (*Succe
 	s.term += 1
 	s.raftStateMutex.Unlock()
 
-	//TODO: update the state
+	// upload nil FileInfoMap to all blockstores
+	s.UpdateFile(ctx, nil)
 
 	return &Success{Flag: true}, nil
 }
@@ -189,17 +260,33 @@ func (s *RaftSurfstore) SendHeartbeat(ctx context.Context, _ *emptypb.Empty) (*S
 }
 
 // ========== DO NOT MODIFY BELOW THIS LINE =====================================
-
 func (s *RaftSurfstore) MakeServerUnreachableFrom(ctx context.Context, servers *UnreachableFromServers) (*Success, error) {
 	s.raftStateMutex.Lock()
-	for _, serverId := range servers.ServerIds {
-		s.unreachableFrom[serverId] = true
+	if len(servers.ServerIds) == 0 {
+		s.unreachableFrom = make(map[int64]bool)
+		log.Printf("Server %d is reachable from all servers", s.id)
+	} else {
+		for _, serverId := range servers.ServerIds {
+			s.unreachableFrom[serverId] = true
+		}
+		log.Printf("Server %d is unreachable from %v", s.id, s.unreachableFrom)
 	}
-	log.Printf("Server %d is unreachable from", s.unreachableFrom)
+
 	s.raftStateMutex.Unlock()
 
 	return &Success{Flag: true}, nil
 }
+
+//func (s *RaftSurfstore) MakeServerUnreachableFrom(ctx context.Context, servers *UnreachableFromServers) (*Success, error) {
+//	s.raftStateMutex.Lock()
+//	for _, serverId := range servers.ServerIds {
+//		s.unreachableFrom[serverId] = true
+//	}
+//	log.Printf("Server %d is unreachable from", s.unreachableFrom)
+//	s.raftStateMutex.Unlock()
+//
+//	return &Success{Flag: true}, nil
+//}
 
 func (s *RaftSurfstore) Crash(ctx context.Context, _ *emptypb.Empty) (*Success, error) {
 	s.serverStatusMutex.Lock()
