@@ -172,7 +172,8 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 	// Ensure that leader commits first and then applies to the state machine
 	s.raftStateMutex.Lock()
 	fmt.Println("leader's log", s.log)
-	s.commitIndex += 1
+	//s.commitIndex += 1
+	s.commitIndex = int64(len(s.log)) - 1
 	fmt.Println("leader", s.id, "commitIndex", s.commitIndex)
 	s.raftStateMutex.Unlock()
 
