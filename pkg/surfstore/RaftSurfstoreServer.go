@@ -177,6 +177,20 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 	fmt.Println("leader", s.id, "commitIndex", s.commitIndex)
 	s.raftStateMutex.Unlock()
 
+	// apply to the state machine
+	for s.lastApplied < s.commitIndex {
+		entry := s.log[s.lastApplied+1]
+		if entry.FileMetaData == nil {
+			s.lastApplied += 1
+			continue
+		}
+		_, err := s.metaStore.UpdateFile(ctx, entry.FileMetaData)
+		if err != nil {
+			return nil, err
+		}
+		s.lastApplied += 1
+	}
+
 	if entry.FileMetaData == nil {
 		return &Version{Version: -1}, nil
 	}
