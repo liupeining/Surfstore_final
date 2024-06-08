@@ -113,7 +113,10 @@ func (surfClient *RPCClient) GetBlockHashes(blockStoreAddr string, blockHashes *
 }
 
 func (surfClient *RPCClient) GetFileInfoMap(serverFileInfoMap *map[string]*FileMetaData) error {
+	fmt.Println("getFileInfoMap")
 	for _, server := range surfClient.MetaStoreAddrs {
+		fmt.Println("server: ", server)
+		fmt.Println("surfClient.MetaStoreAddrs: ", surfClient.MetaStoreAddrs)
 		conn, err := grpc.Dial(server, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			return err
@@ -131,15 +134,7 @@ func (surfClient *RPCClient) GetFileInfoMap(serverFileInfoMap *map[string]*FileM
 			continue
 		}
 
-		//*serverFileInfoMap = fileInfoMap.FileInfoMap
-		// FileInfoMap should be a map[string]*FileMetaData
-		for filename, fileMetaData := range fileInfoMap.FileInfoMap {
-			// If the file already exists in the map, keep the latest version
-			if existingMetaData, exists := (*serverFileInfoMap)[filename]; !exists || existingMetaData.Version < fileMetaData.Version {
-				(*serverFileInfoMap)[filename] = fileMetaData
-			}
-		}
-
+		*serverFileInfoMap = fileInfoMap.FileInfoMap
 		return conn.Close()
 	}
 	return fmt.Errorf("could not find a leader")
