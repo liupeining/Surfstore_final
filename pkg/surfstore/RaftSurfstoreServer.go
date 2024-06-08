@@ -173,14 +173,14 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 	return s.metaStore.UpdateFile(ctx, entry.FileMetaData)
 }
 
-// 1. Reply false if term < currentTerm (§5.1)
+// 1. Reply false if term < currentTerm (§5.1) -> done
 // 2. Reply false if log doesn’t contain an entry at prevLogIndex or whose term
-// doesn't match prevLogTerm (§5.3)
+// doesn't match prevLogTerm (§5.3) -> done
 // 3. If an existing entry conflicts with a new one (same index but different
-// terms), delete the existing entry and all that follow it (§5.3)
-// 4. Append any new entries not already in the log
+// terms), delete the existing entry and all that follow it (§5.3) -> done
+// 4. Append any new entries not already in the log -> done
 // 5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index
-// of last new entry)
+// of last new entry) -done
 func (s *RaftSurfstore) AppendEntries(ctx context.Context, input *AppendEntryInput) (*AppendEntryOutput, error) {
 	//check the status
 	s.raftStateMutex.RLock()
@@ -196,6 +196,7 @@ func (s *RaftSurfstore) AppendEntries(ctx context.Context, input *AppendEntryInp
 		success = false
 	}
 
+	// 1. Reply false if term < currentTerm (§5.1) -> Done
 	if peerTerm < input.Term {
 		s.serverStatusMutex.Lock()
 		s.serverStatus = ServerStatus_FOLLOWER
@@ -206,6 +207,19 @@ func (s *RaftSurfstore) AppendEntries(ctx context.Context, input *AppendEntryInp
 		s.raftStateMutex.Unlock()
 
 		peerTerm = input.Term
+		success = false
+	}
+
+	// Reply false if log doesn’t contain an entry at prevLogIndex or whose term
+	// doesn't match prevLogTerm (§5.3)
+	// eg: len(s.log) = 5, prevLogIndex should be 0~4
+	log.Println("[AppendEntries]log length", len(s.log), "prevLogIndex", input.PrevLogIndex)
+	if int64(len(s.log)) <= input.PrevLogIndex {
+		log.Println("[AppendEntries]false: log doesn't contain an entry at prevLogIndex.")
+		success = false
+	} else if input.PrevLogIndex >= 0 && s.log[input.PrevLogIndex].Term != input.PrevLogTerm {
+		log.Println("[AppendEntries]false: term doesn't match prevLogTerm.")
+		success = false
 	}
 
 	//TODO: Change per algorithm
@@ -222,11 +236,28 @@ func (s *RaftSurfstore) AppendEntries(ctx context.Context, input *AppendEntryInp
 
 	//TODO: Change this per algorithm
 	s.raftStateMutex.Lock()
+
+	// 3. If an existing entry conflicts with a new one (same index but different
+	// terms), delete the existing entry and all that follow it (§5.3)
+	for i := input.PrevLogIndex + 1; i < int64(len(s.log)); i++ { // log starts check from prevLogIndex + 1
+		// entries check from 0
+		if i-input.PrevLogIndex-1 < int64(len(input.Entries)) && s.log[i].Term != input.Entries[i-input.PrevLogIndex-1].Term {
+			s.log = s.log[:i]
+			break
+		}
+	}
+
 	//s.log = input.Entries
+	// 4. Append any new entries not already in the log -> done
 	s.log = append(s.log[:input.PrevLogIndex+1], input.Entries...)
 	log.Println("[AppendEntries]Server", s.id, ": Received entries and now its log is:", s.log)
 
-	s.commitIndex = input.LeaderCommit
+	//s.commitIndex = input.LeaderCommit
+	// 5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
+	if input.LeaderCommit > s.commitIndex {
+		s.commitIndex = min(input.LeaderCommit, int64(len(s.log))-1)
+	}
+
 	log.Println("[AppendEntries]pend on server", s.id, "commitIndex", s.commitIndex, "lastApplied", s.lastApplied)
 	for s.lastApplied < s.commitIndex {
 		log.Println("**pend on server", s.id, "commitIndex", s.commitIndex, "lastApplied", s.lastApplied)
