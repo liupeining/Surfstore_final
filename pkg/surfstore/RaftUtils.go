@@ -223,7 +223,7 @@ func (s *RaftSurfstore) sendToFollower(ctx context.Context, peerId int64, entrie
 				s.nextIndex[peerId]--
 			}
 			s.raftStateMutex.Unlock()
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(100 * time.Millisecond)
 		} else {
 			log.Println("Server", s.id, ": Successfully sent to", peerId)
 			peerResponses <- true
