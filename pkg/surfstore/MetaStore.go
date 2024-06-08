@@ -2,6 +2,7 @@ package surfstore
 
 import (
 	context "context"
+	"fmt"
 	"sync"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -44,6 +45,8 @@ func (m *MetaStore) GetFileInfoMap(ctx context.Context, _ *emptypb.Empty) (*File
 
 func (m *MetaStore) UpdateFile(ctx context.Context, fileMetaData *FileMetaData) (*Version, error) {
 	m.RWMutex.RLock()
+	fmt.Println("metastore:")
+	fmt.Println("UpdateFile: ", fileMetaData.Filename, fileMetaData.Version)
 	//message FileMetaData {
 	//    string filename = 1;
 	//    int32 version = 2;
