@@ -150,7 +150,7 @@ func (s *RaftSurfstore) sendPersistentHeartbeats(ctx context.Context, reqId int6
 		requestLen := int64(len(s.pendingRequests))
 		s.raftStateMutex.RUnlock()
 
-		if reqId >= 0 && reqId < requestLen {
+		if reqId >= 0 && reqId <= requestLen {
 			s.raftStateMutex.Lock()
 			fmt.Println("sendPersistentHeartbeats: Sending success to", reqId)
 			*s.pendingRequests[reqId] <- PendingRequest{success: true, err: nil}
