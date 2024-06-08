@@ -171,14 +171,12 @@ func (s *RaftSurfstore) sendToFollower(ctx context.Context, peerId int64, entrie
 	client := NewRaftSurfstoreClient(s.rpcConns[peerId])
 	for {
 		// check status
-		// if
-
-		//err := s.checkStatus()
-		//if err != nil {
-		//	peerResponses <- false
-		//	fmt.Println("Server", s.id, ": Not leader")
-		//	return
-		//}
+		err := s.checkStatus()
+		if err != nil {
+			peerResponses <- false
+			fmt.Println("Server", s.id, ": Not leader")
+			return
+		}
 		// check unreachableFrom
 		s.raftStateMutex.RLock()
 		fmt.Println("Server", s.id, ": Checking if unreachable from", peerId)
