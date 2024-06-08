@@ -163,7 +163,7 @@ func (s *RaftSurfstore) sendPersistentHeartbeats(ctx context.Context, reqId int6
 			s.raftStateMutex.Lock()
 			fmt.Println("Server", s.id, ": Sending not leader to", reqId)
 			*s.pendingRequests[reqId] <- PendingRequest{success: false, err: nil}
-			s.pendingRequests = append(s.pendingRequests[:reqId], s.pendingRequests[reqId+1:]...)
+			//s.pendingRequests = append(s.pendingRequests[:reqId], s.pendingRequests[reqId+1:]...)
 			s.raftStateMutex.Unlock()
 		}
 	}
