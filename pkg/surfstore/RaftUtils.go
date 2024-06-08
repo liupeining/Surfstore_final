@@ -109,6 +109,7 @@ func (s *RaftSurfstore) checkStatus() error {
 func (s *RaftSurfstore) sendPersistentHeartbeats(ctx context.Context, reqId int64) {
 	numServers := len(s.peers)
 	peerResponses := make(chan bool, numServers-1)
+	log.Println("[sendPersistentHeartbeats]Server", s.id, ": Sending persistent heartbeats")
 
 	for idx := range s.peers {
 		entriesToSend := s.log
@@ -119,7 +120,7 @@ func (s *RaftSurfstore) sendPersistentHeartbeats(ctx context.Context, reqId int6
 		}
 
 		//TODO: Utilize next index
-
+		log.Println("sending to", idx, "entries", entriesToSend)
 		go s.sendToFollower(ctx, idx, entriesToSend, peerResponses)
 	}
 
@@ -132,8 +133,10 @@ func (s *RaftSurfstore) sendPersistentHeartbeats(ctx context.Context, reqId int6
 			numAliveServers += 1
 		}
 	}
+	log.Println("numAliveServers", numAliveServers, "numServers", numServers)
 
 	if numAliveServers > numServers/2 {
+		log.Println("majority of servers are alive")
 		s.raftStateMutex.RLock()
 		requestLen := int64(len(s.pendingRequests))
 		s.raftStateMutex.RUnlock()
@@ -148,7 +151,9 @@ func (s *RaftSurfstore) sendPersistentHeartbeats(ctx context.Context, reqId int6
 	} else {
 		if reqId >= 0 && reqId < int64(len(s.pendingRequests)) {
 			s.raftStateMutex.Lock()
-			*s.pendingRequests[reqId] <- PendingRequest{success: false, err: ErrNotLeader}
+			log.Println("Server", s.id, ": Sending not leader to", reqId)
+			*s.pendingRequests[reqId] <- PendingRequest{success: false, err: nil}
+			s.pendingRequests = append(s.pendingRequests[:reqId], s.pendingRequests[reqId+1:]...)
 			s.raftStateMutex.Unlock()
 		}
 	}
@@ -156,6 +161,15 @@ func (s *RaftSurfstore) sendPersistentHeartbeats(ctx context.Context, reqId int6
 
 func (s *RaftSurfstore) sendToFollower(ctx context.Context, peerId int64, entries []*UpdateOperation, peerResponses chan<- bool) {
 	client := NewRaftSurfstoreClient(s.rpcConns[peerId])
+
+	// check unreachableFrom
+	log.Println("Server", s.id, ": Checking if unreachable from", peerId)
+	log.Println("unreachableFrom", s.unreachableFrom)
+	if s.unreachableFrom[peerId] {
+		peerResponses <- false
+		log.Println("Server", s.id, ": Unreachable from", peerId)
+		return
+	}
 
 	s.raftStateMutex.RLock()
 	appendEntriesInput := AppendEntryInput{
@@ -170,10 +184,9 @@ func (s *RaftSurfstore) sendToFollower(ctx context.Context, peerId int64, entrie
 
 	reply, err := client.AppendEntries(ctx, &appendEntriesInput)
 	log.Println("Server", s.id, ": Receiving output:", "Term", reply.Term, "Id", reply.ServerId, "Success", reply.Success, "Matched Index", reply.MatchedIndex)
-	if err != nil {
+	if err != nil || reply.Success == false {
 		peerResponses <- false
 	} else {
 		peerResponses <- true
 	}
-
 }

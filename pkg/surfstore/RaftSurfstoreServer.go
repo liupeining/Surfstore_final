@@ -116,9 +116,11 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 	// not leader -> return ErrNotLeader
 	// crashed -> return ErrServerCrashed
 	if err := s.checkStatus(); err != nil {
+		log.Println("Server", s.id, ": Error in checkStatus", err)
 		return nil, err
 	}
 
+	log.Println("[UpdateFile] begin sending persistent heartbeats")
 	// PendingRequest: err, success
 	pendingReq := make(chan PendingRequest)
 
@@ -141,13 +143,18 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 	go s.sendPersistentHeartbeats(ctx, int64(reqId))
 
 	response := <-pendingReq
+	log.Println("[UpdateFile] received response from persistent heartbeats")
+	log.Println("response", response.success, response.err)
 	if response.err != nil {
 		return nil, response.err
 	}
 	if !response.success {
 		// retry
+		log.Println("Server", s.id, ": Retrying UpdateFile")
 		return s.UpdateFile(ctx, filemeta)
 	}
+
+	log.Println("Server", s.id, ": UpdateFile successful")
 
 	//TODO:
 	// Ensure that leader commits first and then applies to the state machine
@@ -177,6 +184,13 @@ func (s *RaftSurfstore) AppendEntries(ctx context.Context, input *AppendEntryInp
 	s.raftStateMutex.RUnlock()
 
 	success := true
+
+	log.Println("[AppendEntries] server", s.id, "not reachable from", s.unreachableFrom)
+	leaderId := input.LeaderId
+	if s.unreachableFrom[leaderId] {
+		success = false
+	}
+
 	if peerTerm < input.Term {
 		s.serverStatusMutex.Lock()
 		s.serverStatus = ServerStatus_FOLLOWER
@@ -195,6 +209,10 @@ func (s *RaftSurfstore) AppendEntries(ctx context.Context, input *AppendEntryInp
 		ServerId:     peerId,
 		Success:      success,
 		MatchedIndex: -1,
+	}
+
+	if !success {
+		return &dummyAppendEntriesOutput, nil
 	}
 
 	//TODO: Change this per algorithm
