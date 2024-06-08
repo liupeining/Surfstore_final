@@ -174,8 +174,6 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 	fmt.Println("leader", s.id, "commitIndex", s.commitIndex)
 	s.raftStateMutex.Unlock()
 
-	s.SendHeartbeat(ctx, &emptypb.Empty{})
-
 	if entry.FileMetaData == nil {
 		return &Version{Version: -1}, nil
 	}
@@ -201,10 +199,11 @@ func (s *RaftSurfstore) AppendEntries(ctx context.Context, input *AppendEntryInp
 
 	fmt.Println("[AppendEntries] server", s.id, "not reachable from", s.unreachableFrom)
 	leaderId := input.LeaderId
+	s.raftStateMutex.RLock()
 	if s.unreachableFrom[leaderId] {
 		success = false
 	}
-
+	s.raftStateMutex.RUnlock()
 	// 1. Reply false if term < currentTerm (§5.1) -> Done
 	if peerTerm > input.Term {
 		// maybe old leader is sending the request
