@@ -2,6 +2,7 @@ package surfstore
 
 import (
 	context "context"
+	"fmt"
 	"log"
 	"sync"
 
@@ -41,7 +42,7 @@ func (s *RaftSurfstore) GetFileInfoMap(ctx context.Context, empty *emptypb.Empty
 	if err := s.checkStatus(); err != nil {
 		return nil, err
 	}
-	log.Println("[GetFileInfoMap] begin sending persistent heartbeats")
+	fmt.Println("[GetFileInfoMap] begin sending persistent heartbeats")
 	// send persistent heartbeats
 	pendingReq := make(chan PendingRequest)
 	s.raftStateMutex.Lock()
@@ -50,7 +51,7 @@ func (s *RaftSurfstore) GetFileInfoMap(ctx context.Context, empty *emptypb.Empty
 	s.raftStateMutex.Unlock()
 
 	go s.sendPersistentHeartbeats(ctx, int64(reqId))
-	log.Println("[GetFileInfoMap] sent persistent heartbeats")
+	fmt.Println("[GetFileInfoMap] sent persistent heartbeats")
 	pendingRequest := <-pendingReq
 	if pendingRequest.err != nil {
 		return nil, pendingRequest.err
@@ -66,7 +67,7 @@ func (s *RaftSurfstore) GetBlockStoreMap(ctx context.Context, hashes *BlockHashe
 	if err := s.checkStatus(); err != nil {
 		return nil, err
 	}
-	log.Println("[GetBlockStoreMap] begin sending persistent heartbeats")
+	fmt.Println("[GetBlockStoreMap] begin sending persistent heartbeats")
 	// send persistent heartbeats
 	pendingReq := make(chan PendingRequest)
 	s.raftStateMutex.Lock()
@@ -75,7 +76,7 @@ func (s *RaftSurfstore) GetBlockStoreMap(ctx context.Context, hashes *BlockHashe
 	s.raftStateMutex.Unlock()
 
 	go s.sendPersistentHeartbeats(ctx, int64(reqId))
-	log.Println("[GetBlockStoreMap] sent persistent heartbeats")
+	fmt.Println("[GetBlockStoreMap] sent persistent heartbeats")
 	pendingRequest := <-pendingReq
 	if pendingRequest.err != nil {
 		return nil, pendingRequest.err
@@ -91,7 +92,7 @@ func (s *RaftSurfstore) GetBlockStoreAddrs(ctx context.Context, empty *emptypb.E
 	if err := s.checkStatus(); err != nil {
 		return nil, err
 	}
-	log.Println("[GetBlockStoreAddrs] begin sending persistent heartbeats")
+	fmt.Println("[GetBlockStoreAddrs] begin sending persistent heartbeats")
 	// send persistent heartbeats
 	pendingReq := make(chan PendingRequest)
 	s.raftStateMutex.Lock()
@@ -102,7 +103,7 @@ func (s *RaftSurfstore) GetBlockStoreAddrs(ctx context.Context, empty *emptypb.E
 	go s.sendPersistentHeartbeats(ctx, int64(reqId))
 	pendingRequest := <-pendingReq
 
-	log.Println("[GetBlockStoreAddrs] received response from persistent heartbeats")
+	fmt.Println("[GetBlockStoreAddrs] received response from persistent heartbeats")
 	if pendingRequest.err != nil {
 		return nil, pendingRequest.err
 	}
@@ -119,11 +120,11 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 	// not leader -> return ErrNotLeader
 	// crashed -> return ErrServerCrashed
 	if err := s.checkStatus(); err != nil {
-		log.Println("Server", s.id, ": Error in checkStatus", err)
+		fmt.Println("Server", s.id, ": Error in checkStatus", err)
 		return nil, err
 	}
 
-	log.Println("[UpdateFile] begin sending persistent heartbeats")
+	fmt.Println("[UpdateFile] begin sending persistent heartbeats")
 	// PendingRequest: err, success
 	pendingReq := make(chan PendingRequest)
 
@@ -146,29 +147,29 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 	go s.sendPersistentHeartbeats(ctx, int64(reqId))
 
 	response := <-pendingReq
-	log.Println("[UpdateFile] received response from persistent heartbeats")
-	log.Println("response", response.success, response.err)
+	fmt.Println("[UpdateFile] received response from persistent heartbeats")
+	fmt.Println("response", response.success, response.err)
 	if response.err != nil {
 		return nil, response.err
 	}
 	if !response.success {
 		// retry
-		log.Println("Server", s.id, ": Retrying UpdateFile")
+		fmt.Println("Server", s.id, ": Retrying UpdateFile")
 		if err := s.checkStatus(); err != nil {
-			log.Println("Server", s.id, ": Error in checkStatus", err)
+			fmt.Println("Server", s.id, ": Error in checkStatus", err)
 			return nil, err
 		}
 		return s.UpdateFile(ctx, filemeta)
 	}
 
-	log.Println("Server", s.id, ": UpdateFile successful, get majority replication")
+	fmt.Println("Server", s.id, ": UpdateFile successful, get majority replication")
 
 	//TODO:
 	// Ensure that leader commits first and then applies to the state machine
 	s.raftStateMutex.Lock()
-	log.Println("leader's log", s.log)
+	fmt.Println("leader's log", s.log)
 	s.commitIndex += 1
-	log.Println("leader", s.id, "commitIndex", s.commitIndex)
+	fmt.Println("leader", s.id, "commitIndex", s.commitIndex)
 	s.raftStateMutex.Unlock()
 
 	if entry.FileMetaData == nil {
@@ -194,7 +195,7 @@ func (s *RaftSurfstore) AppendEntries(ctx context.Context, input *AppendEntryInp
 
 	success := true
 
-	log.Println("[AppendEntries] server", s.id, "not reachable from", s.unreachableFrom)
+	fmt.Println("[AppendEntries] server", s.id, "not reachable from", s.unreachableFrom)
 	leaderId := input.LeaderId
 	if s.unreachableFrom[leaderId] {
 		success = false
@@ -217,12 +218,12 @@ func (s *RaftSurfstore) AppendEntries(ctx context.Context, input *AppendEntryInp
 	// Reply false if log doesn’t contain an entry at prevLogIndex or whose term
 	// doesn't match prevLogTerm (§5.3)
 	// eg: len(s.log) = 5, prevLogIndex should be 0~4
-	log.Println("[AppendEntries]log length", len(s.log), "prevLogIndex", input.PrevLogIndex)
+	fmt.Println("[AppendEntries]log length", len(s.log), "prevLogIndex", input.PrevLogIndex)
 	if int64(len(s.log)) <= input.PrevLogIndex {
-		log.Println("[AppendEntries]false: log doesn't contain an entry at prevLogIndex.")
+		fmt.Println("[AppendEntries]false: log doesn't contain an entry at prevLogIndex.")
 		success = false
 	} else if input.PrevLogIndex >= 0 && s.log[input.PrevLogIndex].Term != input.PrevLogTerm {
-		log.Println("[AppendEntries]false: term doesn't match prevLogTerm.")
+		fmt.Println("[AppendEntries]false: term doesn't match prevLogTerm.")
 		success = false
 	}
 
@@ -254,7 +255,7 @@ func (s *RaftSurfstore) AppendEntries(ctx context.Context, input *AppendEntryInp
 	//s.log = input.Entries
 	// 4. Append any new entries not already in the log -> done
 	s.log = append(s.log[:input.PrevLogIndex+1], input.Entries...)
-	log.Println("[AppendEntries]Server", s.id, ": Received entries and now its log is:", s.log)
+	fmt.Println("[AppendEntries]Server", s.id, ": Received entries and now its log is:", s.log)
 
 	//s.commitIndex = input.LeaderCommit
 	// 5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
@@ -262,9 +263,9 @@ func (s *RaftSurfstore) AppendEntries(ctx context.Context, input *AppendEntryInp
 		s.commitIndex = min(input.LeaderCommit, int64(len(s.log))-1)
 	}
 
-	log.Println("[AppendEntries]pend on server", s.id, "commitIndex", s.commitIndex, "lastApplied", s.lastApplied)
+	fmt.Println("[AppendEntries]pend on server", s.id, "commitIndex", s.commitIndex, "lastApplied", s.lastApplied)
 	for s.lastApplied < s.commitIndex {
-		log.Println("**pend on server", s.id, "commitIndex", s.commitIndex, "lastApplied", s.lastApplied)
+		fmt.Println("**pend on server", s.id, "commitIndex", s.commitIndex, "lastApplied", s.lastApplied)
 		entry := s.log[s.lastApplied+1]
 		if entry.FileMetaData == nil {
 			s.lastApplied += 1
@@ -277,7 +278,7 @@ func (s *RaftSurfstore) AppendEntries(ctx context.Context, input *AppendEntryInp
 		}
 		s.lastApplied += 1
 	}
-	log.Println("[AppendEntries]Server", s.id, ": Sending output:", "Term", dummyAppendEntriesOutput.Term, "Id", dummyAppendEntriesOutput.ServerId, "Success", dummyAppendEntriesOutput.Success, "Matched Index", dummyAppendEntriesOutput.MatchedIndex)
+	fmt.Println("[AppendEntries]Server", s.id, ": Sending output:", "Term", dummyAppendEntriesOutput.Term, "Id", dummyAppendEntriesOutput.ServerId, "Success", dummyAppendEntriesOutput.Success, "Matched Index", dummyAppendEntriesOutput.MatchedIndex)
 	s.raftStateMutex.Unlock()
 
 	return &dummyAppendEntriesOutput, nil
