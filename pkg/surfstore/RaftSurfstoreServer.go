@@ -194,7 +194,7 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 	if entry.FileMetaData == nil {
 		return &Version{Version: -1}, nil
 	}
-	return s.metaStore.UpdateFile(ctx, entry.FileMetaData)
+	return &Version{Version: entry.FileMetaData.Version}, nil
 }
 
 // 1. Reply false if term < currentTerm (§5.1) -> done
