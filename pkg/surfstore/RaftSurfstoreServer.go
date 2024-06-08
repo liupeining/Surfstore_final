@@ -116,6 +116,8 @@ func (s *RaftSurfstore) GetBlockStoreAddrs(ctx context.Context, empty *emptypb.E
 func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) (*Version, error) {
 	// Ensure that the request gets replicated on majority of the servers.
 	// Commit the entries and then apply to the state machine
+	fmt.Println("Server", s.id, ": UpdateFile called")
+	fmt.Println("fileinfo", filemeta)
 
 	// not leader -> return ErrNotLeader
 	// crashed -> return ErrServerCrashed
@@ -202,6 +204,10 @@ func (s *RaftSurfstore) AppendEntries(ctx context.Context, input *AppendEntryInp
 	}
 
 	// 1. Reply false if term < currentTerm (§5.1) -> Done
+	if peerTerm > input.Term {
+		// maybe old leader is sending the request
+		success = false
+	}
 	if peerTerm < input.Term {
 		s.serverStatusMutex.Lock()
 		s.serverStatus = ServerStatus_FOLLOWER
