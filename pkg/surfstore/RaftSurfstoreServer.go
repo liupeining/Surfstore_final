@@ -174,6 +174,8 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 	fmt.Println("leader", s.id, "commitIndex", s.commitIndex)
 	s.raftStateMutex.Unlock()
 
+	s.SendHeartbeat(ctx, &emptypb.Empty{})
+
 	if entry.FileMetaData == nil {
 		return &Version{Version: -1}, nil
 	}
