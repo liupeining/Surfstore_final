@@ -71,6 +71,9 @@ func NewRaftServer(id int64, config RaftConfig) (*RaftSurfstore, error) {
 		peers:           config.RaftAddrs,
 		pendingRequests: make([]*chan PendingRequest, 0),
 		lastApplied:     -1,
+
+		nextIndex:  make([]int64, len(config.RaftAddrs)),
+		matchIndex: make([]int64, len(config.RaftAddrs)),
 	}
 
 	return &server, nil

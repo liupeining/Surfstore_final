@@ -28,6 +28,9 @@ type RaftSurfstore struct {
 	peers           []string
 	pendingRequests []*chan PendingRequest
 	lastApplied     int64
+
+	nextIndex  []int64
+	matchIndex []int64
 	/*--------------- Chaos Monkey --------------*/
 	unreachableFrom map[int64]bool
 	UnimplementedRaftSurfstoreServer
@@ -255,6 +258,11 @@ func (s *RaftSurfstore) SetLeader(ctx context.Context, _ *emptypb.Empty) (*Succe
 
 	s.raftStateMutex.Lock()
 	s.term += 1
+	// initialize nextIndex and matchIndex
+	for i := 0; i < len(s.peers); i++ {
+		s.nextIndex[i] = int64(len(s.log))
+		s.matchIndex[i] = -1
+	}
 	s.raftStateMutex.Unlock()
 
 	// upload nil FileInfoMap to all blockstores
