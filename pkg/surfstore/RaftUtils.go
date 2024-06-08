@@ -169,6 +169,13 @@ func (s *RaftSurfstore) sendPersistentHeartbeats(ctx context.Context, reqId int6
 func (s *RaftSurfstore) sendToFollower(ctx context.Context, peerId int64, entries []*UpdateOperation, peerResponses chan<- bool) {
 	client := NewRaftSurfstoreClient(s.rpcConns[peerId])
 	for {
+		// check status
+		err := s.checkStatus()
+		if err != nil {
+			peerResponses <- false
+			log.Println("Server", s.id, ": Not leader")
+			return
+		}
 		// check unreachableFrom
 		s.raftStateMutex.RLock()
 		log.Println("Server", s.id, ": Checking if unreachable from", peerId)

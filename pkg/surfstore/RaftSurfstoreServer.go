@@ -154,6 +154,10 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 	if !response.success {
 		// retry
 		log.Println("Server", s.id, ": Retrying UpdateFile")
+		if err := s.checkStatus(); err != nil {
+			log.Println("Server", s.id, ": Error in checkStatus", err)
+			return nil, err
+		}
 		return s.UpdateFile(ctx, filemeta)
 	}
 
