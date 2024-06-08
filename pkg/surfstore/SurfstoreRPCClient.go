@@ -133,9 +133,13 @@ func (surfClient *RPCClient) GetFileInfoMap(serverFileInfoMap *map[string]*FileM
 
 		//*serverFileInfoMap = fileInfoMap.FileInfoMap
 		// FileInfoMap should be a map[string]*FileMetaData
-		for k, v := range fileInfoMap.FileInfoMap {
-			(*serverFileInfoMap)[k] = v
+		for filename, fileMetaData := range fileInfoMap.FileInfoMap {
+			// If the file already exists in the map, keep the latest version
+			if existingMetaData, exists := (*serverFileInfoMap)[filename]; !exists || existingMetaData.Version < fileMetaData.Version {
+				(*serverFileInfoMap)[filename] = fileMetaData
+			}
 		}
+
 		return conn.Close()
 	}
 	return fmt.Errorf("could not find a leader")
