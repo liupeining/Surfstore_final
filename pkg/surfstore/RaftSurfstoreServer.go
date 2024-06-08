@@ -157,12 +157,14 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 		return s.UpdateFile(ctx, filemeta)
 	}
 
-	log.Println("Server", s.id, ": UpdateFile successful")
+	log.Println("Server", s.id, ": UpdateFile successful, get majority replication")
 
 	//TODO:
 	// Ensure that leader commits first and then applies to the state machine
 	s.raftStateMutex.Lock()
+	log.Println("leader's log", s.log)
 	s.commitIndex += 1
+	log.Println("leader", s.id, "commitIndex", s.commitIndex)
 	s.raftStateMutex.Unlock()
 
 	if entry.FileMetaData == nil {
@@ -220,10 +222,14 @@ func (s *RaftSurfstore) AppendEntries(ctx context.Context, input *AppendEntryInp
 
 	//TODO: Change this per algorithm
 	s.raftStateMutex.Lock()
-	s.log = input.Entries
+	//s.log = input.Entries
+	s.log = append(s.log[:input.PrevLogIndex+1], input.Entries...)
+	log.Println("[AppendEntries]Server", s.id, ": Received entries and now its log is:", s.log)
 
 	s.commitIndex = input.LeaderCommit
+	log.Println("[AppendEntries]pend on server", s.id, "commitIndex", s.commitIndex, "lastApplied", s.lastApplied)
 	for s.lastApplied < s.commitIndex {
+		log.Println("**pend on server", s.id, "commitIndex", s.commitIndex, "lastApplied", s.lastApplied)
 		entry := s.log[s.lastApplied+1]
 		if entry.FileMetaData == nil {
 			s.lastApplied += 1
@@ -236,7 +242,7 @@ func (s *RaftSurfstore) AppendEntries(ctx context.Context, input *AppendEntryInp
 		}
 		s.lastApplied += 1
 	}
-	log.Println("Server", s.id, ": Sending output:", "Term", dummyAppendEntriesOutput.Term, "Id", dummyAppendEntriesOutput.ServerId, "Success", dummyAppendEntriesOutput.Success, "Matched Index", dummyAppendEntriesOutput.MatchedIndex)
+	log.Println("[AppendEntries]Server", s.id, ": Sending output:", "Term", dummyAppendEntriesOutput.Term, "Id", dummyAppendEntriesOutput.ServerId, "Success", dummyAppendEntriesOutput.Success, "Matched Index", dummyAppendEntriesOutput.MatchedIndex)
 	s.raftStateMutex.Unlock()
 
 	return &dummyAppendEntriesOutput, nil

@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"time"
 
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -123,7 +124,10 @@ func (s *RaftSurfstore) sendPersistentHeartbeats(ctx context.Context, reqId int6
 		}
 
 		//TODO: Utilize next index
-		log.Println("sending to", idx, "entries", entriesToSend)
+		log.Println("[sendPersistentHeartbeats]sending to", idx, "entries", entriesToSend)
+		log.Println("leader's log", s.log)
+		log.Println("leader's nextIndex", s.nextIndex)
+		log.Println("leader's commitIndex", s.commitIndex)
 		go s.sendToFollower(ctx, idx, entriesToSend, peerResponses)
 	}
 
@@ -164,32 +168,59 @@ func (s *RaftSurfstore) sendPersistentHeartbeats(ctx context.Context, reqId int6
 
 func (s *RaftSurfstore) sendToFollower(ctx context.Context, peerId int64, entries []*UpdateOperation, peerResponses chan<- bool) {
 	client := NewRaftSurfstoreClient(s.rpcConns[peerId])
+	for {
+		// check unreachableFrom
+		s.raftStateMutex.RLock()
+		log.Println("Server", s.id, ": Checking if unreachable from", peerId)
+		log.Println("unreachableFrom", s.unreachableFrom)
+		if s.unreachableFrom[peerId] {
+			s.raftStateMutex.RUnlock()
+			peerResponses <- false
+			log.Println("Server", s.id, ": Unreachable from", peerId)
+			return
+		}
+		nextIdx := s.nextIndex[peerId]
+		entriesToSend := s.log[nextIdx:]
+		s.raftStateMutex.RUnlock()
 
-	// check unreachableFrom
-	log.Println("Server", s.id, ": Checking if unreachable from", peerId)
-	log.Println("unreachableFrom", s.unreachableFrom)
-	if s.unreachableFrom[peerId] {
-		peerResponses <- false
-		log.Println("Server", s.id, ": Unreachable from", peerId)
-		return
-	}
+		log.Println("[sendToFollower] server", s.id, "sending entries: nextIdx", nextIdx, "entriesToSend", entriesToSend)
 
-	s.raftStateMutex.RLock()
-	appendEntriesInput := AppendEntryInput{
-		Term:         s.term,
-		LeaderId:     s.id,
-		PrevLogTerm:  0,
-		PrevLogIndex: -1,
-		Entries:      entries,
-		LeaderCommit: s.commitIndex,
-	}
-	s.raftStateMutex.RUnlock()
+		s.raftStateMutex.RLock()
+		prevLogIndex := nextIdx - 1
+		prevLogTerm := int64(0)
+		if prevLogIndex >= 0 {
+			prevLogTerm = s.log[prevLogIndex].Term
+		}
+		appendEntriesInput := AppendEntryInput{
+			Term:         s.term,
+			LeaderId:     s.id,
+			PrevLogTerm:  prevLogTerm,
+			PrevLogIndex: prevLogIndex,
+			Entries:      entriesToSend,
+			LeaderCommit: s.commitIndex,
+		}
+		s.raftStateMutex.RUnlock()
 
-	reply, err := client.AppendEntries(ctx, &appendEntriesInput)
-	log.Println("Server", s.id, ": Receiving output:", "Term", reply.Term, "Id", reply.ServerId, "Success", reply.Success, "Matched Index", reply.MatchedIndex)
-	if err != nil || reply.Success == false {
-		peerResponses <- false
-	} else {
-		peerResponses <- true
+		reply, err := client.AppendEntries(ctx, &appendEntriesInput)
+		log.Println("Server", s.id, ": Receiving output:", "Term", reply.Term, "Id", reply.ServerId, "Success", reply.Success, "Matched Index", reply.MatchedIndex)
+		if err != nil || reply.Success == false {
+			if err != nil {
+				peerResponses <- false
+				log.Println("Server", s.id, ": Error sending to", peerId, ":", err)
+				return
+			}
+			//peerResponses <- false
+			// Decrement nextIndex and retry
+			s.raftStateMutex.Lock()
+			if s.nextIndex[peerId] > 0 {
+				s.nextIndex[peerId]--
+			}
+			s.raftStateMutex.Unlock()
+			time.Sleep(500 * time.Millisecond)
+		} else {
+			log.Println("Server", s.id, ": Successfully sent to", peerId)
+			peerResponses <- true
+			return
+		}
 	}
 }
