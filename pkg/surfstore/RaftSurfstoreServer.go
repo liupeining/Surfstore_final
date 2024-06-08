@@ -329,6 +329,7 @@ func (s *RaftSurfstore) SendHeartbeat(ctx context.Context, _ *emptypb.Empty) (*S
 	reqId := len(s.pendingRequests) - 1
 	s.raftStateMutex.RUnlock()
 
+	fmt.Println("[SendHeartbeat] begin sending persistent heartbeats")
 	s.sendPersistentHeartbeats(ctx, int64(reqId))
 
 	return &Success{Flag: true}, nil

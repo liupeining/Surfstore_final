@@ -146,9 +146,9 @@ func (s *RaftSurfstore) sendPersistentHeartbeats(ctx context.Context, reqId int6
 	if numAliveServers > numServers/2 {
 		fmt.Println("[sendPersistentHeartbeats]majority of servers are alive")
 		s.raftStateMutex.RLock()
-		fmt.Println("[sendPersistentHeartbeats]requestLen", len(s.pendingRequests))
 		requestLen := int64(len(s.pendingRequests))
 		s.raftStateMutex.RUnlock()
+		fmt.Println("[sendPersistentHeartbeats]reqId", reqId, "requestLen", requestLen)
 
 		if reqId >= 0 && reqId <= requestLen {
 			s.raftStateMutex.Lock()
