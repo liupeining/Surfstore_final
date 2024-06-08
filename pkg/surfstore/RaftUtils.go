@@ -155,6 +155,7 @@ func (s *RaftSurfstore) sendPersistentHeartbeats(ctx context.Context, reqId int6
 			fmt.Println("sendPersistentHeartbeats: Sending success to", reqId)
 			*s.pendingRequests[reqId] <- PendingRequest{success: true, err: nil}
 			// Remove the request from the pending requests
+			fmt.Println("Server", s.id, ": Removing request from pending requests")
 			s.pendingRequests = append(s.pendingRequests[:reqId], s.pendingRequests[reqId+1:]...)
 			s.raftStateMutex.Unlock()
 		}
