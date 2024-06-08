@@ -145,7 +145,9 @@ func (s *RaftSurfstore) UpdateFile(ctx context.Context, filemeta *FileMetaData) 
 	reqId := len(s.pendingRequests) - 1
 	s.raftStateMutex.Unlock()
 
+	fmt.Println("[UpdateFile]reqlen", len(s.pendingRequests), "reqId", reqId)
 	// send the request to all the followers
+	fmt.Println("[UpdateFile]sending persistent heartbeats")
 	go s.sendPersistentHeartbeats(ctx, int64(reqId))
 
 	response := <-pendingReq
